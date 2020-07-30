@@ -1,13 +1,17 @@
 package com.capitalone.dashboard.collector;
 
-import com.capitalone.dashboard.client.RestClient;
-import com.capitalone.dashboard.model.ArtifactItem;
-import com.capitalone.dashboard.model.ArtifactoryRepo;
-import com.capitalone.dashboard.model.BaseArtifact;
-import com.capitalone.dashboard.model.BinaryArtifact;
-import com.capitalone.dashboard.model.ServerSetting;
-import com.capitalone.dashboard.repository.BinaryArtifactRepository;
-import com.capitalone.dashboard.util.ArtifactUtil;
+import java.nio.charset.StandardCharsets;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections4.IterableUtils;
@@ -27,17 +31,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 
-import java.nio.charset.StandardCharsets;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
+import com.capitalone.dashboard.client.RestClient;
+import com.capitalone.dashboard.model.ArtifactItem;
+import com.capitalone.dashboard.model.ArtifactoryRepo;
+import com.capitalone.dashboard.model.BaseArtifact;
+import com.capitalone.dashboard.model.BinaryArtifact;
+import com.capitalone.dashboard.model.ServerSetting;
+import com.capitalone.dashboard.repository.BinaryArtifactRepository;
+import com.capitalone.dashboard.util.ArtifactUtil;
 
 @Component
 public class DefaultArtifactoryClient implements ArtifactoryClient {
@@ -57,7 +58,8 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 	private final BinaryArtifactRepository binaryArtifactRepository;
 
 	@Autowired
-	public DefaultArtifactoryClient(ArtifactorySettings artifactorySettings, RestClient restClient, BinaryArtifactRepository binaryArtifactRepository) {
+	public DefaultArtifactoryClient(ArtifactorySettings artifactorySettings, RestClient restClient,
+			BinaryArtifactRepository binaryArtifactRepository) {
 		this.artifactorySettings = artifactorySettings;
 		this.restClient = restClient;
 		this.binaryArtifactRepository = binaryArtifactRepository;
@@ -83,18 +85,19 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		}
 	}
 
-	private List<String> getPatterns(){
+	private List<String> getPatterns() {
 		List<String> patterns = new ArrayList<>();
-		if(artifactorySettings.getServers()!=null) {
-			artifactorySettings.getServers().forEach(serverSetting ->
-					serverSetting.getRepoAndPatterns().forEach(repoAndPattern -> patterns.addAll(repoAndPattern.getPatterns())));
+		if (artifactorySettings.getServers() != null) {
+			artifactorySettings.getServers().forEach(serverSetting -> serverSetting.getRepoAndPatterns()
+					.forEach(repoAndPattern -> patterns.addAll(repoAndPattern.getPatterns())));
 		}
 		return patterns;
 	}
 
 	public List<ArtifactoryRepo> getRepos(String instanceUrl) {
 		List<ArtifactoryRepo> result = new ArrayList<>();
-		ResponseEntity<String> responseEntity = makeRestCall(instanceUrl, REPOS_URL_SUFFIX);
+		ResponseEntity<String> responseEntity = makeRestCall(
+				"http://54.202.213.82:8081/nexus/service/local/repositories");
 		String returnJSON = responseEntity.getBody();
 		JSONParser parser = new JSONParser();
 
@@ -104,8 +107,8 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 			for (Object repo : jsonRepos) {
 				JSONObject jsonRepo = (JSONObject) repo;
 
-				final String repoName = getString(jsonRepo, "key");
-				final String repoURL = getString(jsonRepo, "url");
+				final String repoName = getString(jsonRepo, "name");
+				final String repoURL = getString(jsonRepo, "resourceURI");
 				LOGGER.debug("repoName:" + repoName);
 				LOGGER.debug("repoURL: " + repoURL);
 				ArtifactoryRepo artifactoryRepo = new ArtifactoryRepo();
@@ -123,7 +126,7 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		return result;
 	}
 
-	public List<BaseArtifact> getArtifactItems(String instanceUrl, String repoName,String pattern, long lastUpdated) {
+	public List<BaseArtifact> getArtifactItems(String instanceUrl, String repoName, String pattern, long lastUpdated) {
 		LOGGER.info("Last collector update=" + FULL_DATE.format(new Date(lastUpdated)));
 		List<BaseArtifact> baseArtifacts = new ArrayList<>();
 		if (StringUtils.isNotEmpty(instanceUrl) && StringUtils.isNotEmpty(repoName)) {
@@ -141,18 +144,19 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 
 			for (long startTime = lastUpdated; startTime < currentTime; startTime += timeInterval) {
 				String body = "items.find({\"created\" : {\"$gt\" : \"" + FULL_DATE.format(new Date(startTime))
-						+ "\"}, \"created\" : {\"$lte\" : \"" + FULL_DATE.format(new Date(Math.min(startTime + timeInterval, currentTime)))
-						+ "\"},\"repo\":{\"$eq\":\"" + repoName
-						+ "\"}}).include(\"*\")";
+						+ "\"}, \"created\" : {\"$lte\" : \""
+						+ FULL_DATE.format(new Date(Math.min(startTime + timeInterval, currentTime)))
+						+ "\"},\"repo\":{\"$eq\":\"" + repoName + "\"}}).include(\"*\")";
 				LOGGER.info("Artifact Query ==> " + body);
-				ResponseEntity<String> responseEntity = makeRestPost(instanceUrl, AQL_URL_SUFFIX, MediaType.TEXT_PLAIN, body);
+				ResponseEntity<String> responseEntity = makeRestPost(instanceUrl, AQL_URL_SUFFIX, MediaType.TEXT_PLAIN,
+						body);
 				String returnJSON = responseEntity.getBody();
 				JSONParser parser = new JSONParser();
 				try {
 					JSONObject json = (JSONObject) parser.parse(returnJSON);
 					JSONArray jsonArtifacts = getJsonArray(json, "results");
 					LOGGER.info("Total JSON Artifacts -- " + jsonArtifacts.size());
-					int count =0;
+					int count = 0;
 					for (Object artifact : jsonArtifacts) {
 						JSONObject jsonArtifact = (JSONObject) artifact;
 						BaseArtifact baseArtifact = new BaseArtifact();
@@ -195,13 +199,18 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 							}
 
 							// find existing base artifact matching artifact item unique options
-							BaseArtifact suspect = baseArtifacts.stream().filter(b ->
-									StringUtils.equalsIgnoreCase(b.getArtifactItem().getArtifactName(), artifactItem.getArtifactName())
-											&& StringUtils.equalsIgnoreCase(b.getArtifactItem().getRepoName(), artifactItem.getRepoName())
-											&& StringUtils.equalsIgnoreCase(b.getArtifactItem().getPath(), artifactItem.getPath())).findFirst().orElse(baseArtifact);
+							BaseArtifact suspect = baseArtifacts.stream()
+									.filter(b -> StringUtils.equalsIgnoreCase(b.getArtifactItem().getArtifactName(),
+											artifactItem.getArtifactName())
+											&& StringUtils.equalsIgnoreCase(b.getArtifactItem().getRepoName(),
+													artifactItem.getRepoName())
+											&& StringUtils.equalsIgnoreCase(b.getArtifactItem().getPath(),
+													artifactItem.getPath()))
+									.findFirst().orElse(baseArtifact);
 
 							// create artifactInfo
-							List<BinaryArtifact> bas = createArtifactForArtifactBased(artifactCanonicalName, artifactPath, timestamp, jsonArtifact);
+							List<BinaryArtifact> bas = createArtifactForArtifactBased(artifactCanonicalName,
+									artifactPath, timestamp, jsonArtifact);
 							if (CollectionUtils.isNotEmpty(bas)) {
 								insertOrUpdateBaseArtifact(baseArtifacts, artifactItem, suspect, bas);
 							}
@@ -209,7 +218,8 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 							LOGGER.error("Received Exception= " + e.getMessage() + " artifactPath=" + artifactPath, e);
 						}
 						count++;
-						LOGGER.info("artifact count -- " + count + " repo=" + repoName + "  artifactPath=" + artifactPath);
+						LOGGER.info(
+								"artifact count -- " + count + " repo=" + repoName + "  artifactPath=" + artifactPath);
 					}
 				} catch (ParseException e) {
 					LOGGER.error("Parsing artifact items on instance: " + instanceUrl + " and repo: " + repoName, e);
@@ -219,19 +229,16 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		return baseArtifacts;
 	}
 
-	public List<BinaryArtifact> getArtifacts(ArtifactItem artifactItem,List<String> patterns){
-        long start = getLastUpdated(artifactItem.getLastUpdated());
+	public List<BinaryArtifact> getArtifacts(ArtifactItem artifactItem, List<String> patterns) {
+		long start = getLastUpdated(artifactItem.getLastUpdated());
 		List<BinaryArtifact> binaryArtifacts = new ArrayList<>();
 
 		try {
-			JSONArray jsonArtifacts = sendPost(start,
-					artifactItem.getRepoName(),
-					artifactItem.getPath(),
+			JSONArray jsonArtifacts = sendPost(start, artifactItem.getRepoName(), artifactItem.getPath(),
 					artifactItem.getInstanceUrl());
 			if (Objects.isNull(jsonArtifacts)) {
-				LOGGER.error("No json artifacts found for repo=" + artifactItem.getRepoName()
-						+ " path=" + artifactItem.getPath()
-						+ " collectorItemId=" + artifactItem.getId());
+				LOGGER.error("No json artifacts found for repo=" + artifactItem.getRepoName() + " path="
+						+ artifactItem.getPath() + " collectorItemId=" + artifactItem.getId());
 				return binaryArtifacts;
 			}
 			LOGGER.info("Total JSON Artifacts -- " + jsonArtifacts.size());
@@ -246,22 +253,26 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 				BinaryArtifact parsedResult = new BinaryArtifact();
 				boolean isValidParse = false;
 				// check if have values for all regex groups in pattern
-				// try each pattern, if all values are found, then break loop; otherwise continue onto next pattern
-				for (String pattern: patterns) {
+				// try each pattern, if all values are found, then break loop; otherwise
+				// continue onto next pattern
+				for (String pattern : patterns) {
 					Pattern p = Pattern.compile(pattern);
 					isValidParse = ArtifactUtil.validParse(parsedResult, p, fullPath);
-					if (isValidParse) break;
+					if (isValidParse)
+						break;
 				}
 				if (isValidParse) {
 					// version null check
 					if (parsedResult.getArtifactVersion() == null) {
-						LOGGER.error("Could not find version for repo=" + artifactItem.getRepoName() + " fullPath=" + fullPath);
+						LOGGER.error("Could not find version for repo=" + artifactItem.getRepoName() + " fullPath="
+								+ fullPath);
 						break;
 					}
 					updateBinaryArtifactWithPatternMatchedAttributes(newbinaryArtifact, parsedResult);
 					// Check if matching Binary Artifact already exists
-					BinaryArtifact existingBinaryArtifact = binaryArtifactRepository.findTopByCollectorItemIdAndArtifactVersionOrderByTimestampDesc(artifactItem.getId(),
-							newbinaryArtifact.getArtifactVersion());
+					BinaryArtifact existingBinaryArtifact = binaryArtifactRepository
+							.findTopByCollectorItemIdAndArtifactVersionOrderByTimestampDesc(artifactItem.getId(),
+									newbinaryArtifact.getArtifactVersion());
 					if (Objects.nonNull(existingBinaryArtifact)) {
 						// update existing binary artifact for that version and update timestamp
 						updateExistingBinaryArtifact(newbinaryArtifact, existingBinaryArtifact);
@@ -269,29 +280,27 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 					} else {
 						// get latest binary artifact for this artifact item with build info
 						attachLatestBuildInfo(artifactItem, newbinaryArtifact);
-						// save immediately to avoid creating multiple new BAs for same collectorItemId and artifactVersion
+						// save immediately to avoid creating multiple new BAs for same collectorItemId
+						// and artifactVersion
 						binaryArtifactRepository.save(newbinaryArtifact);
 					}
 
 					count++;
-					LOGGER.info("json artifact count -- " + count
-							+ " repo=" + artifactItem.getRepoName()
-							+ " artifactPath=" + artifactPath
-							+ " artifactCanonicalName=" + artifactCanonicalName
+					LOGGER.info("json artifact count -- " + count + " repo=" + artifactItem.getRepoName()
+							+ " artifactPath=" + artifactPath + " artifactCanonicalName=" + artifactCanonicalName
 							+ " collectorItemId=" + artifactItem.getId());
 				} else {
 					// invalid parse/not enough data found
 					count++;
-					LOGGER.error("Not enough data found for json artifact count -- " + count
-							+ " repo=" + artifactItem.getRepoName()
-							+ " artifactPath=" + artifactPath
-							+ " artifactCanonicalName=" + artifactCanonicalName
-							+ " collectorItemId=" + artifactItem.getId());
+					LOGGER.error("Not enough data found for json artifact count -- " + count + " repo="
+							+ artifactItem.getRepoName() + " artifactPath=" + artifactPath + " artifactCanonicalName="
+							+ artifactCanonicalName + " collectorItemId=" + artifactItem.getId());
 				}
 			}
 
 		} catch (ParseException e) {
-			LOGGER.error("Parsing artifact items on instance: " + artifactItem.getInstanceUrl() + " and repo: " + artifactItem.getRepoName(), e);
+			LOGGER.error("Parsing artifact items on instance: " + artifactItem.getInstanceUrl() + " and repo: "
+					+ artifactItem.getRepoName(), e);
 		} catch (Exception e) {
 			LOGGER.error("Received Exception= " + e.toString() + " artifactPath=" + artifactItem.getPath(), e);
 		}
@@ -299,9 +308,9 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 	}
 
 	private long getLastUpdated(long lastUpdated) {
-		if(lastUpdated == 0) {
+		if (lastUpdated == 0) {
 			return System.currentTimeMillis() - artifactorySettings.getOffSet();
-		} else{
+		} else {
 			// unit of time's worth of data
 			TimeUnit unitTime = TimeUnit.valueOf(artifactorySettings.getTimeUnit());
 			// lookback time
@@ -318,10 +327,12 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 
 	private JSONArray sendPost(long start, String repoName, String path, String instanceUrl) throws ParseException {
 		String returnJSON = sendPostQueryByRepo(start, repoName, path, instanceUrl);
-		if (Objects.isNull(returnJSON)) return null;
+		if (Objects.isNull(returnJSON))
+			return null;
 		JSONParser parser = new JSONParser();
 		JSONArray jsonArtifacts = parseJsonArtifacts(parser, returnJSON);
-		if (!jsonArtifacts.isEmpty()) return jsonArtifacts;
+		if (!jsonArtifacts.isEmpty())
+			return jsonArtifacts;
 		return null;
 	}
 
@@ -333,17 +344,16 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		if (Objects.isNull(responseEntity)) {
 			responseEntity = makeRestPost(instanceUrl, AQL_URL_SUFFIX, MediaType.TEXT_PLAIN, query);
 		}
-		if (Objects.isNull(responseEntity)) return null;
+		if (Objects.isNull(responseEntity))
+			return null;
 		return responseEntity.getBody();
 	}
 
-	private String buildQuery(long start, String repo, String path){
+	private String buildQuery(long start, String repo, String path) {
 		String constructPath = path + "/*";
-		String query =  "items.find({\"created\" : {\"$gt\" : \"" + FULL_DATE.format(new Date(start))
-                + "\"},\"repo\":{\"$eq\":\"" + repo
-				+ "\"},\"path\":{\"$match\":\""+constructPath+"\"}})"
-				+ ".include(\"*\")"
-				+ ".sort({\"$asc\" : [\"modified\"]})";
+		String query = "items.find({\"created\" : {\"$gt\" : \"" + FULL_DATE.format(new Date(start))
+				+ "\"},\"repo\":{\"$eq\":\"" + repo + "\"},\"path\":{\"$match\":\"" + constructPath + "\"}})"
+				+ ".include(\"*\")" + ".sort({\"$asc\" : [\"modified\"]})";
 		return query;
 
 	}
@@ -373,9 +383,10 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		return binaryArtifact;
 	}
 
-	private BinaryArtifact updateBinaryArtifactWithPatternMatchedAttributes(BinaryArtifact binaryArtifact, BinaryArtifact result) {
+	private BinaryArtifact updateBinaryArtifactWithPatternMatchedAttributes(BinaryArtifact binaryArtifact,
+			BinaryArtifact result) {
 		binaryArtifact.setArtifactName(result.getArtifactName());
-		binaryArtifact.setArtifactGroupId(result.getArtifactGroupId()) ;
+		binaryArtifact.setArtifactGroupId(result.getArtifactGroupId());
 		binaryArtifact.setArtifactVersion(result.getArtifactVersion());
 		binaryArtifact.setArtifactExtension(result.getArtifactExtension());
 		binaryArtifact.setArtifactModule(result.getArtifactModule());
@@ -393,7 +404,7 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		existingBinaryArtifact.setArtifactName(newBinaryArtifact.getArtifactName());
 		existingBinaryArtifact.setRepo(newBinaryArtifact.getRepo());
 		existingBinaryArtifact.setPath(newBinaryArtifact.getPath());
-        existingBinaryArtifact.setType(newBinaryArtifact.getType());
+		existingBinaryArtifact.setType(newBinaryArtifact.getType());
 		existingBinaryArtifact.setCreatedTimeStamp(newBinaryArtifact.getCreatedTimeStamp());
 		existingBinaryArtifact.setCreatedBy(newBinaryArtifact.getCreatedBy());
 		existingBinaryArtifact.setModifiedTimeStamp(newBinaryArtifact.getModifiedTimeStamp());
@@ -404,25 +415,30 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		// following values will exist depending on pattern matched
 		existingBinaryArtifact.setArtifactExtension(newBinaryArtifact.getArtifactExtension());
 		existingBinaryArtifact.setArtifactClassifier(newBinaryArtifact.getArtifactClassifier());
-        existingBinaryArtifact.setArtifactModule(newBinaryArtifact.getArtifactModule());
+		existingBinaryArtifact.setArtifactModule(newBinaryArtifact.getArtifactModule());
 
-		//update timestamp
+		// update timestamp
 		existingBinaryArtifact.setTimestamp(newBinaryArtifact.getTimestamp());
 	}
 
 	private void attachLatestBuildInfo(ArtifactItem artifactItem, BinaryArtifact binaryArtifact) {
-		// get latest binary artifact associated with the artifact item by desc timestamp
-		BinaryArtifact latestWithBuildInfo = binaryArtifactRepository.findTopByCollectorItemIdAndBuildInfosIsNotEmptyOrderByTimestampDesc(artifactItem.getId(), new Sort(Sort.Direction.DESC, "timestamp"));
-		if (Objects.isNull(latestWithBuildInfo)) return;
+		// get latest binary artifact associated with the artifact item by desc
+		// timestamp
+		BinaryArtifact latestWithBuildInfo = binaryArtifactRepository
+				.findTopByCollectorItemIdAndBuildInfosIsNotEmptyOrderByTimestampDesc(artifactItem.getId(),
+						new Sort(Sort.Direction.DESC, "timestamp"));
+		if (Objects.isNull(latestWithBuildInfo))
+			return;
 		binaryArtifact.setBuildInfos(latestWithBuildInfo.getBuildInfos());
 	}
 
-	private void insertOrUpdateBaseArtifact(List<BaseArtifact> baseArtifacts, ArtifactItem artifactItem, BaseArtifact suspect, List<BinaryArtifact> bas) {
-		for (BinaryArtifact ba: bas) {
-			if(containsBinaryArtifactWithBuildInfo(suspect, ba)){
-				if(baseArtifactNotNull(baseArtifacts, suspect)){
+	private void insertOrUpdateBaseArtifact(List<BaseArtifact> baseArtifacts, ArtifactItem artifactItem,
+			BaseArtifact suspect, List<BinaryArtifact> bas) {
+		for (BinaryArtifact ba : bas) {
+			if (containsBinaryArtifactWithBuildInfo(suspect, ba)) {
+				if (baseArtifactNotNull(baseArtifacts, suspect)) {
 					addOrUpdateBinaryArtifactToBaseArtifact(baseArtifacts, artifactItem, suspect, ba);
-				}else{
+				} else {
 					addNewBaseArtifact(baseArtifacts, artifactItem, suspect, ba);
 				}
 			}
@@ -430,33 +446,34 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		}
 	}
 
-
-	private void addNewBaseArtifact(List<BaseArtifact> baseArtifacts, ArtifactItem artifactItem, BaseArtifact suspect, BinaryArtifact ba) {
+	private void addNewBaseArtifact(List<BaseArtifact> baseArtifacts, ArtifactItem artifactItem, BaseArtifact suspect,
+			BinaryArtifact ba) {
 		suspect.getBinaryArtifacts().add(ba);
 		suspect.setArtifactItem(artifactItem);
 		baseArtifacts.add(suspect);
 	}
 
-	private void addOrUpdateBinaryArtifactToBaseArtifact(List<BaseArtifact> baseArtifacts, ArtifactItem artifactItem, BaseArtifact suspect, BinaryArtifact ba) {
+	private void addOrUpdateBinaryArtifactToBaseArtifact(List<BaseArtifact> baseArtifacts, ArtifactItem artifactItem,
+			BaseArtifact suspect, BinaryArtifact ba) {
 		int index = baseArtifacts.indexOf(suspect);
 		if (index > UPPER_INDEX) {
 			updateArtifactsInExistingBaseArtifact(baseArtifacts, ba, index);
 		} else {
-			addNewBaseArtifact(baseArtifacts,artifactItem,suspect,ba);
+			addNewBaseArtifact(baseArtifacts, artifactItem, suspect, ba);
 		}
 	}
 
 	private void updateArtifactsInExistingBaseArtifact(List<BaseArtifact> baseArtifacts, BinaryArtifact ba, int index) {
 		int ind = baseArtifacts.get(index).getBinaryArtifacts().indexOf(ba);
-		if(ind > UPPER_INDEX){
-			baseArtifacts.get(index).getBinaryArtifacts().set(ind,ba);
-		}else{
+		if (ind > UPPER_INDEX) {
+			baseArtifacts.get(index).getBinaryArtifacts().set(ind, ba);
+		} else {
 			baseArtifacts.get(index).getBinaryArtifacts().add(ba);
 		}
 	}
 
 	private boolean baseArtifactNotNull(List<BaseArtifact> baseArtifacts, BaseArtifact suspect) {
-		return baseArtifacts!= null && suspect.getArtifactItem()!=null && !baseArtifacts.isEmpty();
+		return baseArtifacts != null && suspect.getArtifactItem() != null && !baseArtifacts.isEmpty();
 	}
 
 	private boolean containsBinaryArtifactWithBuildInfo(BaseArtifact suspect, BinaryArtifact ba) {
@@ -471,7 +488,6 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		return !suspect.getBinaryArtifacts().contains(ba);
 	}
 
-
 	public List<BinaryArtifact> getArtifacts(String instanceUrl, String repoName, long lastUpdated) {
 		List<BinaryArtifact> result = new ArrayList<>();
 		// get the list of artifacts
@@ -480,7 +496,8 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 					+ "\"},\"repo\":{\"$eq\":\"" + repoName
 					+ "\"}}).include(\"repo\", \"name\", \"path\", \"created\", \"modified\", \"property\")";
 
-			ResponseEntity<String> responseEntity = makeRestPost(instanceUrl, AQL_URL_SUFFIX, MediaType.TEXT_PLAIN, body);
+			ResponseEntity<String> responseEntity = makeRestPost(instanceUrl, AQL_URL_SUFFIX, MediaType.TEXT_PLAIN,
+					body);
 			String returnJSON = responseEntity.getBody();
 			JSONParser parser = new JSONParser();
 
@@ -492,8 +509,8 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 
 					final String artifactCanonicalName = getString(jsonArtifact, "name");
 					String artifactPath = getString(jsonArtifact, "path");
-					if (artifactPath.charAt(artifactPath.length()-1) == '/') {
-						artifactPath = artifactPath.substring(0, artifactPath.length()-1);
+					if (artifactPath.charAt(artifactPath.length() - 1) == '/') {
+						artifactPath = artifactPath.substring(0, artifactPath.length() - 1);
 					}
 					String sTimestamp = getString(jsonArtifact, "modified");
 					if (sTimestamp == null) {
@@ -521,25 +538,29 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		return result;
 	}
 
-
 	/**
-	 * Creates an artifact given its canonical name and path.
-	 * Artifacts are created by supplied pattern configurations. By default three are supplied:
-	 * 1. Maven artifacts:
-	 * 		[org]/[module]/[version]/[module]-[version]([-classifier])(.[ext])
-	 * 2. Ivy artifacts:
-	 * 		(a) [org]/[module]/[revision]/[type]/[artifact]-[revision](-[classifier])(.[ext])
-	 * 		(b) [org]/[module]/[revision]/ivy-[revision](-[classifier]).xml
+	 * Creates an artifact given its canonical name and path. Artifacts are created
+	 * by supplied pattern configurations. By default three are supplied: 1. Maven
+	 * artifacts: [org]/[module]/[version]/[module]-[version]([-classifier])(.[ext])
+	 * 2. Ivy artifacts: (a)
+	 * [org]/[module]/[revision]/[type]/[artifact]-[revision](-[classifier])(.[ext])
+	 * (b) [org]/[module]/[revision]/ivy-[revision](-[classifier]).xml
 	 *
-	 * Using these patterns, we extract the artifact name, version and group id from the canonical name and path.
+	 * Using these patterns, we extract the artifact name, version and group id from
+	 * the canonical name and path.
 	 *
-	 * @param artifactCanonicalName			artifact's canonical name in artifactory
-	 * @param artifactPath					artifact's path in artifactory
-	 * @param timestamp						the artifact's timestamp
-	 * @param jsonArtifact 					the artifact metadata is extracted from here
+	 * @param artifactCanonicalName
+	 *            artifact's canonical name in artifactory
+	 * @param artifactPath
+	 *            artifact's path in artifactory
+	 * @param timestamp
+	 *            the artifact's timestamp
+	 * @param jsonArtifact
+	 *            the artifact metadata is extracted from here
 	 * @return
 	 */
-	private BinaryArtifact createArtifact(String artifactCanonicalName, String artifactPath, long timestamp, JSONObject jsonArtifact) {
+	private BinaryArtifact createArtifact(String artifactCanonicalName, String artifactPath, long timestamp,
+			JSONObject jsonArtifact) {
 		BinaryArtifact result = null;
 		String fullPath = artifactPath + "/" + artifactCanonicalName;
 
@@ -557,13 +578,12 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 				result.setCreatedBy(getString(jsonArtifact, "created_by"));
 				result.setModifiedTimeStamp(convertTimestamp(getString(jsonArtifact, "modified")));
 				result.setModifiedBy(getString(jsonArtifact, "modified_by"));
-				result.setActual_md5(getString(jsonArtifact,  "actual_md5"));
+				result.setActual_md5(getString(jsonArtifact, "actual_md5"));
 				result.setActual_sha1(getString(jsonArtifact, "actual_sha1"));
 				result.setCanonicalName(artifactCanonicalName);
 				result.setTimestamp(timestamp);
 				result.setVirtualRepos(getJsonArray(jsonArtifact, "virtual_repos"));
 				addMetadataToArtifact(result, jsonArtifact);
-
 
 				return result;
 			}
@@ -577,7 +597,8 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		return null;
 	}
 
-	private List<BinaryArtifact> createArtifactForArtifactBased(String artifactCanonicalName, String artifactPath, long timestamp, JSONObject jsonArtifact) {
+	private List<BinaryArtifact> createArtifactForArtifactBased(String artifactCanonicalName, String artifactPath,
+			long timestamp, JSONObject jsonArtifact) {
 		BinaryArtifact result = null;
 		String fullPath = artifactPath + "/" + artifactCanonicalName;
 		List<BinaryArtifact> binaryArtifactList = new ArrayList<>();
@@ -587,9 +608,10 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 			if (result != null) {
 				String artifactName = result.getArtifactName();
 				String artifactVersion = result.getArtifactVersion();
-				Iterable<BinaryArtifact> bas = binaryArtifactRepository.findByArtifactNameAndArtifactVersion(artifactName, artifactVersion);
-				if(!IterableUtils.isEmpty(bas)){
-					for (BinaryArtifact ba: bas) {
+				Iterable<BinaryArtifact> bas = binaryArtifactRepository
+						.findByArtifactNameAndArtifactVersion(artifactName, artifactVersion);
+				if (!IterableUtils.isEmpty(bas)) {
+					for (BinaryArtifact ba : bas) {
 						setCollectorItemId(result, ba);
 						setBuilds(result, ba);
 						binaryArtifactRepository.delete(ba.getId());
@@ -622,19 +644,18 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 	}
 
 	private void setBuilds(BinaryArtifact result, BinaryArtifact ba) {
-		if(Objects.nonNull(ba.getBuildInfos())&& !ba.getBuildInfos().isEmpty()){
+		if (Objects.nonNull(ba.getBuildInfos()) && !ba.getBuildInfos().isEmpty()) {
 			result.setBuildInfos(ba.getBuildInfos());
 		}
 	}
 
 	private void setCollectorItemId(BinaryArtifact result, BinaryArtifact ba) {
-		if(ba.getCollectorItemId()!=null){
+		if (ba.getCollectorItemId() != null) {
 			result.setCollectorItemId(ba.getCollectorItemId());
 		}
 	}
 
-
-	private long convertTimestamp(String sTimestamp){
+	private long convertTimestamp(String sTimestamp) {
 		long timestamp = 0;
 		if (sTimestamp != null) {
 			try {
@@ -646,6 +667,7 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		}
 		return timestamp;
 	}
+
 	@SuppressWarnings("PMD.AvoidDeeplyNestedIfStmts")
 	private void addMetadataToArtifact(BinaryArtifact ba, JSONObject jsonArtifact) {
 		if (ba != null && jsonArtifact != null) {
@@ -655,67 +677,67 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 				String key = getString(jsonProperty, "key");
 				String value = getString(jsonProperty, "value");
 				switch (key) {
-					case "build.url":
-					case "build_url":
-					case "buildUrl":
-						ba.setBuildUrl(value);
-						break;
-					case "build.number":
-					case "build_number":
-					case "buildNumber":
-						ba.setBuildNumber(value);
-						break;
-					case "job.url":
-					case "job_url":
-					case "jobUrl":
-						ba.setJobUrl(value);
-						break;
-					case "job.name":
-					case "job_name":
-					case "jobName":
-						ba.setJobName(value);
-						break;
-					case "instance.url":
-					case "instance_url":
-					case "instanceUrl":
-						ba.setInstanceUrl(value);
-						break;
-					case "vcs.url":
-					case "vcs_url":
-					case "vcsUrl":
-						ba.setScmUrl(value);
-						break;
-					case "vcs.branch":
-					case "vcs_branch":
-					case "vcsBranch":
-						ba.setScmBranch(value);
-						break;
-					case "vcs.revision":
-					case "vcs_revision":
-					case "vcsRevision":
-						ba.setScmRevisionNumber(value);
-						break;
-					default:
-						// MongoDB doesn't allow dots in keys. So we handle it by converting
-						// the letter following it to uppercase, and ignoring the dot.
-						if (key.contains(".")) {
-							StringBuilder newKey = new StringBuilder();
-							char prevChar = 0;
-							for (char c : key.toCharArray()) {
-								if (c != '.') {
-									if (prevChar == '.') {
-										c = Character.toUpperCase(c);
-									}
-									newKey.append(c);
+				case "build.url":
+				case "build_url":
+				case "buildUrl":
+					ba.setBuildUrl(value);
+					break;
+				case "build.number":
+				case "build_number":
+				case "buildNumber":
+					ba.setBuildNumber(value);
+					break;
+				case "job.url":
+				case "job_url":
+				case "jobUrl":
+					ba.setJobUrl(value);
+					break;
+				case "job.name":
+				case "job_name":
+				case "jobName":
+					ba.setJobName(value);
+					break;
+				case "instance.url":
+				case "instance_url":
+				case "instanceUrl":
+					ba.setInstanceUrl(value);
+					break;
+				case "vcs.url":
+				case "vcs_url":
+				case "vcsUrl":
+					ba.setScmUrl(value);
+					break;
+				case "vcs.branch":
+				case "vcs_branch":
+				case "vcsBranch":
+					ba.setScmBranch(value);
+					break;
+				case "vcs.revision":
+				case "vcs_revision":
+				case "vcsRevision":
+					ba.setScmRevisionNumber(value);
+					break;
+				default:
+					// MongoDB doesn't allow dots in keys. So we handle it by converting
+					// the letter following it to uppercase, and ignoring the dot.
+					if (key.contains(".")) {
+						StringBuilder newKey = new StringBuilder();
+						char prevChar = 0;
+						for (char c : key.toCharArray()) {
+							if (c != '.') {
+								if (prevChar == '.') {
+									c = Character.toUpperCase(c);
 								}
-								prevChar = c;
+								newKey.append(c);
 							}
-							key = newKey.toString();
+							prevChar = c;
 						}
-						if (StringUtils.isNotEmpty(key)) {
-							ba.getMetadata().put(key, value);
-						}
-						break;
+						key = newKey.toString();
+					}
+					if (StringUtils.isNotEmpty(key)) {
+						ba.getMetadata().put(key, value);
+					}
+					break;
 				}
 			}
 		}
@@ -752,7 +774,8 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 		return response;
 	}
 
-	// join a base url to another path or paths - this will handle trailing or non-trailing /'s
+	// join a base url to another path or paths - this will handle trailing or
+	// non-trailing /'s
 	private String joinUrl(String url, String... paths) {
 		StringBuilder result = new StringBuilder(url);
 		for (String path : paths) {
@@ -777,14 +800,14 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 			apiKeys.add(serverSetting.getApiKey());
 		});
 
-		if (CollectionUtils.isNotEmpty(servers) && CollectionUtils.isNotEmpty(userNames) && CollectionUtils.isNotEmpty(apiKeys)) {
+		if (CollectionUtils.isNotEmpty(servers) && CollectionUtils.isNotEmpty(userNames)
+				&& CollectionUtils.isNotEmpty(apiKeys)) {
 			for (int i = 0; i < servers.size(); i++) {
 				ServerSetting serverSetting = servers.get(i);
-				if (serverSetting != null && serverSetting.getUrl().contains(instanceUrl)
-						&& i < userNames.size() && i < apiKeys.size() && userNames.get(i) != null && apiKeys.get(i) != null) {
+				if (serverSetting != null && serverSetting.getUrl().contains(instanceUrl) && i < userNames.size()
+						&& i < apiKeys.size() && userNames.get(i) != null && apiKeys.get(i) != null) {
 					String userInfo = userNames.get(i) + ":" + apiKeys.get(i);
-					byte[] encodedAuth = Base64.encodeBase64(
-							userInfo.getBytes(StandardCharsets.US_ASCII));
+					byte[] encodedAuth = Base64.encodeBase64(userInfo.getBytes(StandardCharsets.US_ASCII));
 					String authHeader = "Basic " + new String(encodedAuth);
 					headers.set(HttpHeaders.AUTHORIZATION, authHeader);
 				}
