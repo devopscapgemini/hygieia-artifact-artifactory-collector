@@ -1,5 +1,9 @@
 package com.capitalone.dashboard.collector;
 
+import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -10,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -18,13 +23,21 @@ import org.apache.commons.io.IOUtils;
 import org.bson.types.ObjectId;
 import org.json.simple.JSONObject;
 import org.junit.Before;
+import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Matchers;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestOperations;
 
 import com.capitalone.dashboard.client.RestClient;
 import com.capitalone.dashboard.model.ArtifactItem;
+import com.capitalone.dashboard.model.BaseArtifact;
 import com.capitalone.dashboard.model.BinaryArtifact;
 import com.capitalone.dashboard.model.Build;
 import com.capitalone.dashboard.model.RepoAndPattern;
@@ -67,403 +80,352 @@ public class DefaultArtifactoryClientTest {
 				binaryArtifactRepository);
 	}
 
-	// @Test
-	// public void testGetRepos() throws Exception {
-	// String reposJson = getJson("repos.json");
-	//
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String reposListUrl = "http://localhost:8081/artifactory/api/repositories";
-	//
-	// when(rest.exchange(eq(reposListUrl), eq(HttpMethod.GET),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(reposJson, HttpStatus.OK));
-	// List<ArtifactoryRepo> repos = defaultArtifactoryClient.getRepos(instanceUrl);
-	// assertThat(repos.size(), is(2));
-	// assertThat(repos.get(0).getRepoName(), is("release"));
-	// assertThat(repos.get(0).getRepoUrl(),
-	// is("http://localhost:8081/artifactory/release"));
-	// assertThat(repos.get(1).getRepoName(), is("xldeploy"));
-	// assertThat(repos.get(1).getRepoUrl(),
-	// is("http://localhost:8081/artifactory/xldeploy"));
-	// }
-	//
-	// @Test
-	// public void testGetEmptyArtifacts() throws Exception {
-	// String emptyArtifactsJson = getJson("emptyArtifacts.json");
-	//
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(emptyArtifactsJson, HttpStatus.OK));
-	// List<BinaryArtifact> artifacts =
-	// defaultArtifactoryClient.getArtifacts(instanceUrl, repoName, 0);
-	// assertThat(artifacts.size(), is(0));
-	// }
-	//
-	//
-	// @Test
-	// public void testGetArtifactItems() throws Exception {
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	//
-	// long lastUpdated = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2) -
-	// TimeUnit.HOURS.toMillis(1);
-	// long currTime = lastUpdated + TimeUnit.HOURS.toMillis(1);
-	//
-	// // with the addition of artifactory pagination, update the times to limit
-	// number of calls made in getArtifactItems()
-	// JSONObject updatedArtifactItems =
-	// updateJsonArtifactTimes("artifactItems.json", currTime);
-	// // get latest timestamp
-	// List<Map<String,String>> res = ((List) updatedArtifactItems.get("results"));
-	// long lastTime =
-	// (FULL_DATE.parse((res.get(res.size()-1)).get("created")).getTime());
-	// // mock query json in response
-	// String artifactItemsJson1 = queryJsonByTime(updatedArtifactItems,
-	// lastUpdated,
-	// lastUpdated + TimeUnit.DAYS.toMillis(1));
-	// String artifactItemsJson2 = queryJsonByTime(updatedArtifactItems,
-	// lastUpdated + TimeUnit.DAYS.toMillis(1),
-	// lastUpdated + TimeUnit.DAYS.toMillis(2));
-	// // additional call from slight offset in milliseconds
-	// String artifactItemsJson3 = queryJsonByTime(updatedArtifactItems,
-	// lastUpdated + TimeUnit.DAYS.toMillis(2),
-	// System.currentTimeMillis());
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(artifactItemsJson1, HttpStatus.OK))
-	// .thenReturn(new ResponseEntity<>(artifactItemsJson2, HttpStatus.OK))
-	// .thenReturn(new ResponseEntity<>(artifactItemsJson3, HttpStatus.OK));
-	//
-	// when(binaryArtifactRepository.findByArtifactNameAndArtifactVersion("test-dev","1")).thenReturn(null);
-	// when(binaryArtifactRepository.findByArtifactNameAndArtifactVersion("test-dev","1")).thenReturn(binaryArtifactIterable(true));
-	// List<BaseArtifact> baseArtifacts =
-	// defaultArtifactoryClient.getArtifactItems(instanceUrl, repoName,
-	// ArtifactUtilTest.ARTIFACT_PATTERN,lastUpdated);
-	// assertThat(baseArtifacts.size(), is(1));
-	// assertThat(baseArtifacts.get(0).getArtifactItem().getArtifactName(),is("test-dev"));
-	// assertThat(baseArtifacts.get(0).getArtifactItem().getInstanceUrl(),is("http://localhost:8081/artifactory/"));
-	// assertThat(baseArtifacts.get(0).getArtifactItem().getRepoName(),is("repoName"));
-	// assertThat(baseArtifacts.get(0).getArtifactItem().getPath(),is("dummy/test-dev"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCanonicalName(),is("manifest.json"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactGroupId(),is("dummy"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getActual_md5(),is("111aadc11ed11b1111df111d16d6c8d821112f3"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getActual_sha1(),is("111aadc11ed11b1111df111d16d6c8d821112f3"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactExtension(),is("json"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactName(),is("test-dev"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getType(),is("file"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getModifiedBy(),is("robot"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getModifiedTimeStamp(),is(new
-	// Long("1539268736471")));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCreatedBy(),is("robot"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCreatedTimeStamp(),is(lastTime));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactVersion(),is("1"));
-	//
-	// }
-	//
-	// @Test
-	// public void testGetArtifactItemsWithBuildInfo() throws Exception {
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	//
-	// long lastUpdated = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2) -
-	// TimeUnit.HOURS.toMillis(1);
-	// long currTime = lastUpdated + TimeUnit.HOURS.toMillis(1);
-	//
-	// // with the addition of artifactory pagination, update the times to limit
-	// number of calls made in getArtifactItems()
-	// JSONObject updatedArtifactItems =
-	// updateJsonArtifactTimes("artifactItems.json", currTime);
-	// // get latest timestamp
-	// List<Map<String,String>> res = ((List) updatedArtifactItems.get("results"));
-	// long lastTime =
-	// (FULL_DATE.parse((res.get(res.size()-1)).get("created")).getTime());
-	// // mock query json in response
-	// String artifactItemsJson1 = queryJsonByTime(updatedArtifactItems,
-	// lastUpdated,
-	// lastUpdated + TimeUnit.DAYS.toMillis(1));
-	// String artifactItemsJson2 = queryJsonByTime(updatedArtifactItems,
-	// lastUpdated + TimeUnit.DAYS.toMillis(1),
-	// lastUpdated + TimeUnit.DAYS.toMillis(2));
-	// // additional call from slight offset in milliseconds
-	// String artifactItemsJson3 = queryJsonByTime(updatedArtifactItems,
-	// lastUpdated + TimeUnit.DAYS.toMillis(2),
-	// System.currentTimeMillis());
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(artifactItemsJson1, HttpStatus.OK))
-	// .thenReturn(new ResponseEntity<>(artifactItemsJson2, HttpStatus.OK))
-	// .thenReturn(new ResponseEntity<>(artifactItemsJson3, HttpStatus.OK));
-	// when(binaryArtifactRepository.findByArtifactNameAndArtifactVersion("test-dev","1"))
-	// .thenReturn(binaryArtifactIterable(true));
-	//
-	// List<BaseArtifact> baseArtifacts =
-	// defaultArtifactoryClient.getArtifactItems(instanceUrl, repoName,
-	// ArtifactUtilTest.ARTIFACT_PATTERN,lastUpdated);
-	// assertThat(baseArtifacts.size(), is(1));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().size(), is(1));
-	// assertThat(baseArtifacts.get(0).getArtifactItem().getArtifactName(),is("test-dev"));
-	// assertThat(baseArtifacts.get(0).getArtifactItem().getInstanceUrl(),is("http://localhost:8081/artifactory/"));
-	// assertThat(baseArtifacts.get(0).getArtifactItem().getRepoName(),is("repoName"));
-	// assertThat(baseArtifacts.get(0).getArtifactItem().getPath(),is("dummy/test-dev"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCanonicalName(),is("manifest.json"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactGroupId(),is("dummy"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getActual_md5(),is("111aadc11ed11b1111df111d16d6c8d821112f3"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getActual_sha1(),is("111aadc11ed11b1111df111d16d6c8d821112f3"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactExtension(),is("json"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactName(),is("test-dev"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getType(),is("file"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getModifiedBy(),is("robot"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getModifiedTimeStamp(),is(new
-	// Long("1539268736471")));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCreatedBy(),is("robot"));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCreatedTimeStamp(),is(lastTime));
-	// assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactVersion(),is("1"));
-	// assertNotNull(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCollectorItemId());
-	// assertNotNull(baseArtifacts.get(0).getBinaryArtifacts().get(0).getBuildInfos());
-	//
-	// }
-	//
-	// // TEST new Hybrid Mode
-	// @Test
-	// public void testGetArtifactsNoExistingMatchingBinaryArtifactAttributes()
-	// throws Exception {
-	// // [scenario] no existing binary artifact with matching collectorItemId and
-	// version found in DB
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	// String response = getJson("binaryArtifacts.json");
-	// ObjectId id = ObjectId.get();
-	// // artifact item
-	// ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
-	// List<String> patterns = new ArrayList<>();
-	// patterns.add(ArtifactUtilTest.ARTIFACT_PATTERN);
-	// List<String> subRepos =
-	// settings.getServers().get(0).getRepoAndPatterns().get(0).getSubRepos();
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
-	//
-	// when(binaryArtifactRepository.findTopByCollectorItemIdAndArtifactVersionOrderByTimestampDesc(id,
-	// "1")).thenReturn(null);
-	// // binary artifact found with matching collector item id
-	// when(binaryArtifactRepository.findTopByCollectorItemIdAndBuildInfosIsNotEmptyOrderByTimestampDesc(id,
-	// new Sort(Sort.Direction.DESC,
-	// "timestamp"))).thenReturn(binaryArtifactLatestCollectorItemId(id, true));
-	// List<BinaryArtifact> binaryArtifacts =
-	// defaultArtifactoryClient.getArtifacts(ai, patterns);
-	// assertThat(binaryArtifacts.size(), is(0));
-	// }
-	//
-	// @Test
-	// public void testGetArtifactsWithExistingMatchingBinaryArtifactAttributes()
-	// throws Exception {
-	// // [scenario] found existing binary artifact with matching artifact name,
-	// version, path, and repo found in DB
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	// String response = getJson("binaryArtifacts.json");
-	// ObjectId id = ObjectId.get();
-	// // artifact item
-	// ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
-	// List<String> patterns = new ArrayList<>();
-	// patterns.add(ArtifactUtilTest.ARTIFACT_PATTERN);
-	// List<String> subRepos =
-	// settings.getServers().get(0).getRepoAndPatterns().get(0).getSubRepos();
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
-	//
-	// BinaryArtifact matchedBA = createMatchedExistingBinaryArtifact(id,
-	// "test-dev", "1", "dummy/test-dev/1", repoName, true);
-	// when(binaryArtifactRepository.findTopByCollectorItemIdAndArtifactVersionOrderByTimestampDesc(id,
-	// "1")).thenReturn(matchedBA);
-	// List<BinaryArtifact> binaryArtifacts =
-	// defaultArtifactoryClient.getArtifacts(ai, patterns);
-	// assertThat(binaryArtifacts.size(), is(1));
-	// assertThat(binaryArtifacts.get(0).getArtifactName(),is("test-dev"));
-	// assertThat(binaryArtifacts.get(0).getCanonicalName(),is("manifest.json"));
-	// assertThat(binaryArtifacts.get(0).getArtifactGroupId(),is("dummy"));
-	// assertThat(binaryArtifacts.get(0).getActual_md5(),is("111aadc11ed11b1111df111d16d6c8d821112f1"));
-	// assertThat(binaryArtifacts.get(0).getActual_sha1(),is("111aadc11ed11b1111df111d16d6c8d821112f1"));
-	// assertThat(binaryArtifacts.get(0).getArtifactExtension(),is("json"));
-	// assertThat(binaryArtifacts.get(0).getType(),is("file"));
-	// assertThat(binaryArtifacts.get(0).getModifiedBy(),is("robot"));
-	// assertThat(binaryArtifacts.get(0).getModifiedTimeStamp(),is(FULL_DATE.parse("2018-10-11T14:38:56.471Z").getTime()));
-	// assertThat(binaryArtifacts.get(0).getCreatedBy(),is("robot"));
-	// assertThat(binaryArtifacts.get(0).getCreatedTimeStamp(),is(FULL_DATE.parse("2018-10-11T14:27:16.031Z").getTime()));
-	// assertThat(binaryArtifacts.get(0).getArtifactVersion(),is("1"));
-	// assertThat(binaryArtifacts.get(0).getVirtualRepos(),
-	// is(Arrays.asList("docker-managed")));
-	// }
-	//
-	// // test with having to iterate through multiple patterns with no patterns
+	@Test
+	public void testGetRepos() throws Exception {
+		// String reposJson = getJson("repos.json");
+		//
+		// String instanceUrl = "http://localhost:8081/artifactory/";
+		// String reposListUrl = "http://localhost:8081/artifactory/api/repositories";
+		//
+		// when(rest.exchange(eq(reposListUrl), eq(HttpMethod.GET),
+		// Matchers.any(HttpEntity.class), eq(String.class)))
+		// .thenReturn(new ResponseEntity<>(reposJson, HttpStatus.OK));
+		// List<ArtifactoryRepo> repos = defaultArtifactoryClient.getRepos(instanceUrl);
+		// assertThat(repos.size(), is(2));
+		// assertThat(repos.get(0).getRepoName(), is("release"));
+		// assertThat(repos.get(0).getRepoUrl(),
+		// is("http://localhost:8081/artifactory/release"));
+		// assertThat(repos.get(1).getRepoName(), is("xldeploy"));
+		// assertThat(repos.get(1).getRepoUrl(),
+		// is("http://localhost:8081/artifactory/xldeploy"));
+	}
+
+	@Test
+	public void testGetEmptyArtifacts() throws Exception {
+		String emptyArtifactsJson = getJson("emptyArtifacts.json");
+
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(emptyArtifactsJson, HttpStatus.OK));
+		List<BinaryArtifact> artifacts = defaultArtifactoryClient.getArtifacts(instanceUrl, repoName, 0);
+		assertThat(artifacts.size(), is(0));
+	}
+
+	@Test
+	public void testGetArtifactItems() throws Exception {
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+
+		long lastUpdated = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2) - TimeUnit.HOURS.toMillis(1);
+		long currTime = lastUpdated + TimeUnit.HOURS.toMillis(1);
+
+		// with the addition of artifactory pagination, update the times to limit number
+		// of calls made in getArtifactItems()
+		JSONObject updatedArtifactItems = updateJsonArtifactTimes("artifactItems.json", currTime);
+		// get latest timestamp
+		List<Map<String, String>> res = ((List) updatedArtifactItems.get("results"));
+		long lastTime = (FULL_DATE.parse((res.get(res.size() - 1)).get("created")).getTime());
+		// mock query json in response
+		String artifactItemsJson1 = queryJsonByTime(updatedArtifactItems, lastUpdated,
+				lastUpdated + TimeUnit.DAYS.toMillis(1));
+		String artifactItemsJson2 = queryJsonByTime(updatedArtifactItems, lastUpdated + TimeUnit.DAYS.toMillis(1),
+				lastUpdated + TimeUnit.DAYS.toMillis(2));
+		// additional call from slight offset in milliseconds
+		String artifactItemsJson3 = queryJsonByTime(updatedArtifactItems, lastUpdated + TimeUnit.DAYS.toMillis(2),
+				System.currentTimeMillis());
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(artifactItemsJson1, HttpStatus.OK))
+				.thenReturn(new ResponseEntity<>(artifactItemsJson2, HttpStatus.OK))
+				.thenReturn(new ResponseEntity<>(artifactItemsJson3, HttpStatus.OK));
+
+		when(binaryArtifactRepository.findByArtifactNameAndArtifactVersion("test-dev", "1")).thenReturn(null);
+		when(binaryArtifactRepository.findByArtifactNameAndArtifactVersion("test-dev", "1"))
+				.thenReturn(binaryArtifactIterable(true));
+		List<BaseArtifact> baseArtifacts = defaultArtifactoryClient.getArtifactItems(instanceUrl, repoName,
+				ArtifactUtilTest.ARTIFACT_PATTERN, lastUpdated);
+		assertThat(baseArtifacts.size(), is(1));
+		assertThat(baseArtifacts.get(0).getArtifactItem().getArtifactName(), is("test-dev"));
+		assertThat(baseArtifacts.get(0).getArtifactItem().getInstanceUrl(), is("http://localhost:8081/artifactory/"));
+		assertThat(baseArtifacts.get(0).getArtifactItem().getRepoName(), is("repoName"));
+		assertThat(baseArtifacts.get(0).getArtifactItem().getPath(), is("dummy/test-dev"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCanonicalName(), is("manifest.json"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactGroupId(), is("dummy"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getActual_md5(),
+				is("111aadc11ed11b1111df111d16d6c8d821112f3"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getActual_sha1(),
+				is("111aadc11ed11b1111df111d16d6c8d821112f3"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactExtension(), is("json"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactName(), is("test-dev"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getType(), is("file"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getModifiedBy(), is("robot"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getModifiedTimeStamp(),
+				is(new Long("1539268736471")));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCreatedBy(), is("robot"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCreatedTimeStamp(), is(lastTime));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactVersion(), is("1"));
+
+	}
+
+	@Test
+	public void testGetArtifactItemsWithBuildInfo() throws Exception {
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+
+		long lastUpdated = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(2) - TimeUnit.HOURS.toMillis(1);
+		long currTime = lastUpdated + TimeUnit.HOURS.toMillis(1);
+
+		// with the addition of artifactory pagination, update the times to limit number
+		// of calls made in getArtifactItems()
+		JSONObject updatedArtifactItems = updateJsonArtifactTimes("artifactItems.json", currTime);
+		// get latest timestamp
+		List<Map<String, String>> res = ((List) updatedArtifactItems.get("results"));
+		long lastTime = (FULL_DATE.parse((res.get(res.size() - 1)).get("created")).getTime());
+		// mock query json in response
+		String artifactItemsJson1 = queryJsonByTime(updatedArtifactItems, lastUpdated,
+				lastUpdated + TimeUnit.DAYS.toMillis(1));
+		String artifactItemsJson2 = queryJsonByTime(updatedArtifactItems, lastUpdated + TimeUnit.DAYS.toMillis(1),
+				lastUpdated + TimeUnit.DAYS.toMillis(2));
+		// additional call from slight offset in milliseconds
+		String artifactItemsJson3 = queryJsonByTime(updatedArtifactItems, lastUpdated + TimeUnit.DAYS.toMillis(2),
+				System.currentTimeMillis());
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(artifactItemsJson1, HttpStatus.OK))
+				.thenReturn(new ResponseEntity<>(artifactItemsJson2, HttpStatus.OK))
+				.thenReturn(new ResponseEntity<>(artifactItemsJson3, HttpStatus.OK));
+		when(binaryArtifactRepository.findByArtifactNameAndArtifactVersion("test-dev", "1"))
+				.thenReturn(binaryArtifactIterable(true));
+
+		List<BaseArtifact> baseArtifacts = defaultArtifactoryClient.getArtifactItems(instanceUrl, repoName,
+				ArtifactUtilTest.ARTIFACT_PATTERN, lastUpdated);
+		assertThat(baseArtifacts.size(), is(1));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().size(), is(1));
+		assertThat(baseArtifacts.get(0).getArtifactItem().getArtifactName(), is("test-dev"));
+		assertThat(baseArtifacts.get(0).getArtifactItem().getInstanceUrl(), is("http://localhost:8081/artifactory/"));
+		assertThat(baseArtifacts.get(0).getArtifactItem().getRepoName(), is("repoName"));
+		assertThat(baseArtifacts.get(0).getArtifactItem().getPath(), is("dummy/test-dev"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCanonicalName(), is("manifest.json"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactGroupId(), is("dummy"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getActual_md5(),
+				is("111aadc11ed11b1111df111d16d6c8d821112f3"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getActual_sha1(),
+				is("111aadc11ed11b1111df111d16d6c8d821112f3"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactExtension(), is("json"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactName(), is("test-dev"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getType(), is("file"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getModifiedBy(), is("robot"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getModifiedTimeStamp(),
+				is(new Long("1539268736471")));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCreatedBy(), is("robot"));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCreatedTimeStamp(), is(lastTime));
+		assertThat(baseArtifacts.get(0).getBinaryArtifacts().get(0).getArtifactVersion(), is("1"));
+		assertNotNull(baseArtifacts.get(0).getBinaryArtifacts().get(0).getCollectorItemId());
+		assertNotNull(baseArtifacts.get(0).getBinaryArtifacts().get(0).getBuildInfos());
+
+	}
+
+	// TEST new Hybrid Mode
+	@Test
+	public void testGetArtifactsNoExistingMatchingBinaryArtifactAttributes() throws Exception {
+		// [scenario] no existing binary artifact with matching collectorItemId and
+		// version found in DB
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+		String response = getJson("binaryArtifacts.json");
+		ObjectId id = ObjectId.get();
+		// artifact item
+		ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
+		List<String> patterns = new ArrayList<>();
+		patterns.add(ArtifactUtilTest.ARTIFACT_PATTERN);
+		List<String> subRepos = settings.getServers().get(0).getRepoAndPatterns().get(0).getSubRepos();
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
+
+		when(binaryArtifactRepository.findTopByCollectorItemIdAndArtifactVersionOrderByTimestampDesc(id, "1"))
+				.thenReturn(null);
+		// binary artifact found with matching collector item id
+		when(binaryArtifactRepository.findTopByCollectorItemIdAndBuildInfosIsNotEmptyOrderByTimestampDesc(id,
+				new Sort(Sort.Direction.DESC, "timestamp"))).thenReturn(binaryArtifactLatestCollectorItemId(id, true));
+		List<BinaryArtifact> binaryArtifacts = defaultArtifactoryClient.getArtifacts(ai, patterns);
+		assertThat(binaryArtifacts.size(), is(0));
+	}
+
+	@Test
+	public void testGetArtifactsWithExistingMatchingBinaryArtifactAttributes() throws Exception {
+		// [scenario] found existing binary artifact with matching artifact name,
+		// version, path, and repo found in DB
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+		String response = getJson("binaryArtifacts.json");
+		ObjectId id = ObjectId.get();
+		// artifact item
+		ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
+		List<String> patterns = new ArrayList<>();
+		patterns.add(ArtifactUtilTest.ARTIFACT_PATTERN);
+		List<String> subRepos = settings.getServers().get(0).getRepoAndPatterns().get(0).getSubRepos();
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
+
+		BinaryArtifact matchedBA = createMatchedExistingBinaryArtifact(id, "test-dev", "1", "dummy/test-dev/1",
+				repoName, true);
+		when(binaryArtifactRepository.findTopByCollectorItemIdAndArtifactVersionOrderByTimestampDesc(id, "1"))
+				.thenReturn(matchedBA);
+		List<BinaryArtifact> binaryArtifacts = defaultArtifactoryClient.getArtifacts(ai, patterns);
+		assertThat(binaryArtifacts.size(), is(1));
+		assertThat(binaryArtifacts.get(0).getArtifactName(), is("test-dev"));
+		assertThat(binaryArtifacts.get(0).getCanonicalName(), is("manifest.json"));
+		assertThat(binaryArtifacts.get(0).getArtifactGroupId(), is("dummy"));
+		assertThat(binaryArtifacts.get(0).getActual_md5(), is("111aadc11ed11b1111df111d16d6c8d821112f1"));
+		assertThat(binaryArtifacts.get(0).getActual_sha1(), is("111aadc11ed11b1111df111d16d6c8d821112f1"));
+		assertThat(binaryArtifacts.get(0).getArtifactExtension(), is("json"));
+		assertThat(binaryArtifacts.get(0).getType(), is("file"));
+		assertThat(binaryArtifacts.get(0).getModifiedBy(), is("robot"));
+		assertThat(binaryArtifacts.get(0).getModifiedTimeStamp(),
+				is(FULL_DATE.parse("2018-10-11T14:38:56.471Z").getTime()));
+		assertThat(binaryArtifacts.get(0).getCreatedBy(), is("robot"));
+		assertThat(binaryArtifacts.get(0).getCreatedTimeStamp(),
+				is(FULL_DATE.parse("2018-10-11T14:27:16.031Z").getTime()));
+		assertThat(binaryArtifacts.get(0).getArtifactVersion(), is("1"));
+		assertThat(binaryArtifacts.get(0).getVirtualRepos(), is(Arrays.asList("docker-managed")));
+	}
+
+	// test with having to iterate through multiple patterns with no patterns
 	// matched
-	// @Test
-	// public void testGetArtifactsIterateMultiplePatternsNoMatch() throws Exception
-	// {
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	// String response = getJson("binaryArtifacts.json");
-	// ObjectId id = ObjectId.get();
-	// // artifact item
-	// ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
-	// List<String> patterns = new ArrayList<>();
-	// patterns.add(ArtifactUtilTest.MISC_PATTERN1);
-	// patterns.add(ArtifactUtilTest.MISC_PATTERN2);
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
-	//
-	// List<BinaryArtifact> binaryArtifacts =
-	// defaultArtifactoryClient.getArtifacts(ai, patterns);
-	// assertThat(binaryArtifacts.size(), is(0));
-	// }
-	//
-	// // test with version null
-	// @Test
-	// public void testGetArtifactsVersionNull() throws Exception {
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	// Map<String, String> fieldsToUpdate = new HashMap<>();
-	// fieldsToUpdate.put("path", "dummy/test-dev");
-	// String response = updateJsonArtifactFields("binaryArtifacts.json",
-	// fieldsToUpdate);
-	// ObjectId id = ObjectId.get();
-	// // artifact item
-	// ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
-	// List<String> patterns = new ArrayList<>();
-	// patterns.add(ArtifactUtilTest.ARTIFACT_PATTERN);
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
-	//
-	// List<BinaryArtifact> binaryArtifacts =
-	// defaultArtifactoryClient.getArtifacts(ai, patterns);
-	// assertThat(binaryArtifacts.size(), is(0));
-	// }
-	//
-	// // test with invalid path returning no artifacts
-	// @Test
-	// public void testGetArtifactsInvalidPath() throws Exception {
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "sub-repo-1";
-	// String emptyResponse = getJson("emptyArtifacts.json");
-	// ObjectId id = ObjectId.get();
-	// // artifact item
-	// ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
-	// List<String> patterns = new ArrayList<>();
-	// patterns.add(ArtifactUtilTest.ARTIFACT_PATTERN);
-	//
-	// // invalid path returns no results
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(emptyResponse, HttpStatus.OK));
-	//
-	// List<BinaryArtifact> binaryArtifacts =
-	// defaultArtifactoryClient.getArtifacts(ai, patterns);
-	// assertThat(binaryArtifacts.size(), is(0));
-	// }
-	//
-	// @Test
-	// public void testGetMavenArtifacts() throws Exception {
-	// String mavenArtifactsJson = getJson("mavenArtifacts.json");
-	//
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(mavenArtifactsJson, HttpStatus.OK));
-	// List<BinaryArtifact> artifacts =
-	// defaultArtifactoryClient.getArtifacts(instanceUrl, repoName, 0);
-	// assertThat(artifacts.size(), is(1));
-	//
-	// assertThat(artifacts.get(0).getArtifactName(), is("helloworld"));
-	// assertThat(artifacts.get(0).getArtifactGroupId(), is("com.mycompany.myapp"));
-	// assertThat(artifacts.get(0).getArtifactVersion(),
-	// is("4.8.5.20160909-091018I"));
-	// assertThat(artifacts.get(0).getCanonicalName(),
-	// is("helloworld-4.8.5.20160909-091018I.jar"));
-	// assertThat(artifacts.get(0).getTimestamp(),
-	// is(FULL_DATE.parse("2016-09-09T09:10:37.945-04:00").getTime()));
-	// assertThat(artifacts.get(0).getBuildUrl(),
-	// is("http://localhost:8080/job/myname_helloworld/1/"));
-	// assertThat(artifacts.get(0).getBuildNumber(), is("1"));
-	// assertThat(artifacts.get(0).getInstanceUrl(), is("http://localhost:8080/"));
-	// assertThat(artifacts.get(0).getJobName(), is("myname_helloworld"));
-	// assertThat(artifacts.get(0).getJobUrl(),
-	// is("http://localhost:8080/job/myname_helloworld"));
-	// assertThat(artifacts.get(0).getScmUrl(),
-	// is("https://github.com/~myname/helloworld.git"));
-	// assertThat(artifacts.get(0).getScmBranch(), is("origin/master"));
-	// assertThat(artifacts.get(0).getScmRevisionNumber(),
-	// is("943a7c299ec551d985356e5ad52766b38c52e893"));
-	// }
-	//
-	// @Test
-	// public void testGetIvyArtifacts() throws Exception {
-	// String ivyArtifactsJson = getJson("ivyArtifacts.json");
-	//
-	// String instanceUrl = "http://localhost:8081/artifactory/";
-	// String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
-	// String repoName = "release";
-	//
-	// when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST),
-	// Matchers.any(HttpEntity.class), eq(String.class)))
-	// .thenReturn(new ResponseEntity<>(ivyArtifactsJson, HttpStatus.OK));
-	// List<BinaryArtifact> artifacts =
-	// defaultArtifactoryClient.getArtifacts(instanceUrl, repoName, 0);
-	// assertThat(artifacts.size(), is(2));
-	//
-	// assertThat(artifacts.get(0).getArtifactName(), is("helloworld"));
-	// assertThat(artifacts.get(0).getArtifactGroupId(), is("com.mycompany.myapp"));
-	// assertThat(artifacts.get(0).getArtifactVersion(),
-	// is("4.8.5.20160909-091018I"));
-	// assertThat(artifacts.get(0).getCanonicalName(),
-	// is("helloworld-4.8.5.20160909-091018I.jar"));
-	// assertThat(artifacts.get(0).getTimestamp(),
-	// is(FULL_DATE.parse("2016-09-09T09:10:37.945-04:00").getTime()));
-	// assertThat(artifacts.get(0).getBuildUrl(),
-	// is("http://localhost:8080/job/myname_helloworld/1/"));
-	// assertThat(artifacts.get(0).getBuildNumber(), is("1"));
-	// assertThat(artifacts.get(0).getInstanceUrl(), is("http://localhost:8080/"));
-	// assertThat(artifacts.get(0).getJobName(), is("myname_helloworld"));
-	// assertThat(artifacts.get(0).getJobUrl(),
-	// is("http://localhost:8080/job/myname_helloworld"));
-	// assertThat(artifacts.get(0).getScmUrl(),
-	// is("https://github.com/~myname/helloworld.git"));
-	// assertThat(artifacts.get(0).getScmBranch(), is("origin/master"));
-	// assertThat(artifacts.get(0).getScmRevisionNumber(),
-	// is("943a7c299ec551d985356e5ad52766b38c52e893"));
-	//
-	// assertThat(artifacts.get(1).getArtifactName(), is("ivy"));
-	// assertThat(artifacts.get(1).getArtifactGroupId(), is("com.mycompany.myapp"));
-	// assertThat(artifacts.get(1).getArtifactVersion(),
-	// is("4.8.5.20160909-091018I"));
-	// assertThat(artifacts.get(1).getCanonicalName(),
-	// is("ivy-4.8.5.20160909-091018I.xml"));
-	// assertThat(artifacts.get(1).getTimestamp(),
-	// is(FULL_DATE.parse("2016-10-13T05:10:49.209-04:00").getTime()));
-	// }
-	//
+	@Test
+	public void testGetArtifactsIterateMultiplePatternsNoMatch() throws Exception {
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+		String response = getJson("binaryArtifacts.json");
+		ObjectId id = ObjectId.get();
+		// artifact item
+		ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
+		List<String> patterns = new ArrayList<>();
+		patterns.add(ArtifactUtilTest.MISC_PATTERN1);
+		patterns.add(ArtifactUtilTest.MISC_PATTERN2);
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
+
+		List<BinaryArtifact> binaryArtifacts = defaultArtifactoryClient.getArtifacts(ai, patterns);
+		assertThat(binaryArtifacts.size(), is(0));
+	}
+
+	// test with version null
+	@Test
+	public void testGetArtifactsVersionNull() throws Exception {
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+		Map<String, String> fieldsToUpdate = new HashMap<>();
+		fieldsToUpdate.put("path", "dummy/test-dev");
+		String response = updateJsonArtifactFields("binaryArtifacts.json", fieldsToUpdate);
+		ObjectId id = ObjectId.get();
+		// artifact item
+		ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
+		List<String> patterns = new ArrayList<>();
+		patterns.add(ArtifactUtilTest.ARTIFACT_PATTERN);
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
+
+		List<BinaryArtifact> binaryArtifacts = defaultArtifactoryClient.getArtifacts(ai, patterns);
+		assertThat(binaryArtifacts.size(), is(0));
+	}
+
+	// test with invalid path returning no artifacts
+	@Test
+	public void testGetArtifactsInvalidPath() throws Exception {
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "sub-repo-1";
+		String emptyResponse = getJson("emptyArtifacts.json");
+		ObjectId id = ObjectId.get();
+		// artifact item
+		ArtifactItem ai = createArtifactItem(id, "test-dev", instanceUrl, repoName);
+		List<String> patterns = new ArrayList<>();
+		patterns.add(ArtifactUtilTest.ARTIFACT_PATTERN);
+
+		// invalid path returns no results
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(emptyResponse, HttpStatus.OK));
+
+		List<BinaryArtifact> binaryArtifacts = defaultArtifactoryClient.getArtifacts(ai, patterns);
+		assertThat(binaryArtifacts.size(), is(0));
+	}
+
+	@Test
+	public void testGetMavenArtifacts() throws Exception {
+		String mavenArtifactsJson = getJson("mavenArtifacts.json");
+
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(mavenArtifactsJson, HttpStatus.OK));
+		List<BinaryArtifact> artifacts = defaultArtifactoryClient.getArtifacts(instanceUrl, repoName, 0);
+		assertThat(artifacts.size(), is(1));
+
+		assertThat(artifacts.get(0).getArtifactName(), is("helloworld"));
+		assertThat(artifacts.get(0).getArtifactGroupId(), is("com.mycompany.myapp"));
+		assertThat(artifacts.get(0).getArtifactVersion(), is("4.8.5.20160909-091018I"));
+		assertThat(artifacts.get(0).getCanonicalName(), is("helloworld-4.8.5.20160909-091018I.jar"));
+		assertThat(artifacts.get(0).getTimestamp(), is(FULL_DATE.parse("2016-09-09T09:10:37.945-04:00").getTime()));
+		assertThat(artifacts.get(0).getBuildUrl(), is("http://localhost:8080/job/myname_helloworld/1/"));
+		assertThat(artifacts.get(0).getBuildNumber(), is("1"));
+		assertThat(artifacts.get(0).getInstanceUrl(), is("http://localhost:8080/"));
+		assertThat(artifacts.get(0).getJobName(), is("myname_helloworld"));
+		assertThat(artifacts.get(0).getJobUrl(), is("http://localhost:8080/job/myname_helloworld"));
+		assertThat(artifacts.get(0).getScmUrl(), is("https://github.com/~myname/helloworld.git"));
+		assertThat(artifacts.get(0).getScmBranch(), is("origin/master"));
+		assertThat(artifacts.get(0).getScmRevisionNumber(), is("943a7c299ec551d985356e5ad52766b38c52e893"));
+	}
+
+	@Test
+	public void testGetIvyArtifacts() throws Exception {
+		String ivyArtifactsJson = getJson("ivyArtifacts.json");
+
+		String instanceUrl = "http://localhost:8081/artifactory/";
+		String aqlUrl = "http://localhost:8081/artifactory/api/search/aql";
+		String repoName = "release";
+
+		when(rest.exchange(eq(aqlUrl), eq(HttpMethod.POST), Matchers.any(HttpEntity.class), eq(String.class)))
+				.thenReturn(new ResponseEntity<>(ivyArtifactsJson, HttpStatus.OK));
+		List<BinaryArtifact> artifacts = defaultArtifactoryClient.getArtifacts(instanceUrl, repoName, 0);
+		assertThat(artifacts.size(), is(2));
+
+		assertThat(artifacts.get(0).getArtifactName(), is("helloworld"));
+		assertThat(artifacts.get(0).getArtifactGroupId(), is("com.mycompany.myapp"));
+		assertThat(artifacts.get(0).getArtifactVersion(), is("4.8.5.20160909-091018I"));
+		assertThat(artifacts.get(0).getCanonicalName(), is("helloworld-4.8.5.20160909-091018I.jar"));
+		assertThat(artifacts.get(0).getTimestamp(), is(FULL_DATE.parse("2016-09-09T09:10:37.945-04:00").getTime()));
+		assertThat(artifacts.get(0).getBuildUrl(), is("http://localhost:8080/job/myname_helloworld/1/"));
+		assertThat(artifacts.get(0).getBuildNumber(), is("1"));
+		assertThat(artifacts.get(0).getInstanceUrl(), is("http://localhost:8080/"));
+		assertThat(artifacts.get(0).getJobName(), is("myname_helloworld"));
+		assertThat(artifacts.get(0).getJobUrl(), is("http://localhost:8080/job/myname_helloworld"));
+		assertThat(artifacts.get(0).getScmUrl(), is("https://github.com/~myname/helloworld.git"));
+		assertThat(artifacts.get(0).getScmBranch(), is("origin/master"));
+		assertThat(artifacts.get(0).getScmRevisionNumber(), is("943a7c299ec551d985356e5ad52766b38c52e893"));
+
+		assertThat(artifacts.get(1).getArtifactName(), is("ivy"));
+		assertThat(artifacts.get(1).getArtifactGroupId(), is("com.mycompany.myapp"));
+		assertThat(artifacts.get(1).getArtifactVersion(), is("4.8.5.20160909-091018I"));
+		assertThat(artifacts.get(1).getCanonicalName(), is("ivy-4.8.5.20160909-091018I.xml"));
+		assertThat(artifacts.get(1).getTimestamp(), is(FULL_DATE.parse("2016-10-13T05:10:49.209-04:00").getTime()));
+	}
+
 	private String getJson(String fileName) throws IOException {
 		InputStream inputStream = DefaultArtifactoryClient.class.getResourceAsStream(fileName);
 		return IOUtils.toString(inputStream);
