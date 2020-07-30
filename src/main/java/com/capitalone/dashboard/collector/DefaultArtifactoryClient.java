@@ -44,8 +44,8 @@ import com.capitalone.dashboard.util.ArtifactUtil;
 public class DefaultArtifactoryClient implements ArtifactoryClient {
 	public static final int UPPER_INDEX = -1;
 	private static final Logger LOGGER = LoggerFactory.getLogger(DefaultArtifactoryClient.class);
-
-	private static final String REPOS_URL_SUFFIX = "api/repositories";
+	// ppp
+	private static final String REPOS_URL_SUFFIX = "service/local/repositories";
 	private static final String AQL_URL_SUFFIX = "api/search/aql";
 
 	private final DateFormat FULL_DATE = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX");
@@ -96,8 +96,7 @@ public class DefaultArtifactoryClient implements ArtifactoryClient {
 
 	public List<ArtifactoryRepo> getRepos(String instanceUrl) {
 		List<ArtifactoryRepo> result = new ArrayList<>();
-		ResponseEntity<String> responseEntity = makeRestCall(
-				"http://54.202.213.82:8081/nexus/service/local/repositories");
+		ResponseEntity<String> responseEntity = makeRestCall("http://54.202.213.82:8081/nexus/", REPOS_URL_SUFFIX);
 		String returnJSON = responseEntity.getBody();
 		JSONParser parser = new JSONParser();
 
